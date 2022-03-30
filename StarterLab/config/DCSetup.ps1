@@ -1,6 +1,6 @@
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
-Invoke-Expression ((Net-Object System.Net.WebClient).DownloadString('https://chocolately.org/install.ps1'))
+Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolately.org/install.ps1'))
 choco install googlechrome -y
 choco instasll putty -y
 choco install winscp -y
