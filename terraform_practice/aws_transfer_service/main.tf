@@ -13,6 +13,7 @@ provider "aws" {
   secret_key = "I think not"
 }
 
+
 resource "aws_vpc" "vpc_main" {
     cidr_block = "10.0.0.0/16"
     tags = {
@@ -68,8 +69,8 @@ resource "aws_security_group" "sg1" {
 
   ingress {
     description      = "internet_inbound"
-    from_port        = 0
-    to_port          = 0
+    from_port        = 22
+    to_port          = 22
     protocol         = "tcp"
     cidr_blocks      = ["0.0.0.0/0"]
   }
@@ -86,8 +87,13 @@ resource "aws_security_group" "sg1" {
   }
 }
 
-data "aws_s3_bucket" "bucket" {
+resource "aws_s3_bucket" "bucket" {
   bucket = "test-bucket-wsp"
+}
+
+resource "aws_s3_bucket_acl" "s3_acl" {
+  bucket = aws_s3_bucket.bucket.id
+  acl    = "private"
 }
 
 resource "aws_transfer_server" "sftp" {
@@ -106,23 +112,79 @@ resource "aws_transfer_server" "sftp" {
   }
 }
 
-data "aws_iam_role" "sftp_role" {
+# data "aws_iam_role" "sftp_role" {
+#   name = "sftp_aws_role"
+# }
+
+resource "aws_iam_role" "sftp_role" {
   name = "sftp_aws_role"
+  assume_role_policy = <<EOF
+  {
+        "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "transfer.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+  }
+  EOF
+}
+
+resource "aws_iam_role_policy" "sftp_role_policy" {
+  name = "sftp_aws_role_policy"
+  role = aws_iam_role.sftp_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+        Sid = "AllowListingOfUserFolder",
+        Effect = "Allow",
+        Action = [
+            "s3:ListBucket",
+            "s3:GetBucketLocation"
+        ]
+        Resource = [
+          "arn:aws:s3:::*"
+          ]
+    },
+    {
+        Sid = "HomeDirObjectAccess",
+        Effect = "Allow",
+        Action = [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion",
+                "s3:GetObjectACL",
+                "s3:PutObjectACL"
+        ]
+        Resource = [
+                "arn:aws:s3:::*"
+        ]
+    }]
+  }) 
+  
+
 }
 
 
 resource "aws_transfer_user" "sftp1" {
   server_id = aws_transfer_server.sftp.id
   user_name = "sftpuser1"
-  role = data.aws_iam_role.sftp_role.arn
-  home_directory = "/${data.aws_s3_bucket.bucket.id}"
+  role = aws_iam_role.sftp_role.arn
+  home_directory = "/${aws_s3_bucket.bucket.id}"
 }
   
 resource "aws_transfer_ssh_key" "sftp_key" {
   server_id = aws_transfer_server.sftp.id
   user_name = aws_transfer_user.sftp1.user_name
   body = <<EOF
-  ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC8xtB+J0JLosHQVMOOFFrF7oCnJRcm/9MMo54nD2uH5Ws725YBSZIUjk1IgijadSiDi9rGOSlpqQDtQAUqZCVpRuo+4Ge6Rn/qctqrhYq2nhN2o609RWnsy7TphSTAD8sZvCSsD18WPY/JWuWMciJTf0p4FswKYo5hxtDrr59NpGS9qSffQ6ieIWg83V9kkaxekfi4ey1Dt2evSsJ4C+/6SnXICOtw9tgtrNmhlsOYkAKvpI//VESrHuj9qC2eXsupy9a6k+yyN8/nj/ss/DsmhZ3I1K1R5uO6qTtuZyBOs0S4ZZorbwCyKo8MstPXiLafoFUxquwfFVJvX4PVdkNngIwp3sg+vXmEGHqLzEl5YUaFCxDm+2VcN6lpwiOWlBnWCDWM30QYozMDiRbDcBwm4md4o9wyKmiswU3TUfwKH1BFrYdb+8rCtFOouI0MDRFgl7WnUS/XFdZwMLfQixPgamOJpRSNAXxcQ6TxkZTKdn6DlPGZvf6kE7jUNnWCmVR1Hi/8FL2+cGhSJlzNabUB5lvuRWHfsJExleNUcVIW4ZJARXo+fWMGVisZH3SAiFzlmH2pfEsNULcNz37s91aze2QQIHrr0750/n3MV/hDDXksL8yJ58CY4MZ+dARG6jeA8A5hPiTdNhhUSP6FAOpUgMEShWIQzE6Dg8SyZdL3Vw== parke@DESKTOP-G9RR6HK
+  ssh-rsa 
   EOF
   
 }
